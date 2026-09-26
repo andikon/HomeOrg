@@ -4,8 +4,10 @@ import { errorCodeOf } from "./logging.js";
 
 const config = loadConfig();
 const app = await createApp({
+  bootstrapAdmin: config.bootstrapAdmin,
   databaseUrl: config.databaseUrl,
   logLevel: config.logLevel,
+  sessionSecret: config.sessionSecret,
 });
 
 try {
