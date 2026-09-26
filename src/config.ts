@@ -8,6 +8,7 @@ const configSchema = z.object({
     (value) => value.startsWith("postgres://") || value.startsWith("postgresql://"),
     "DATABASE_URL must use PostgreSQL",
   ),
+  DATABASE_PASSWORD_FILE: z.string().trim().min(1).optional(),
   HOST: z.string().trim().min(1).default("0.0.0.0"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
@@ -24,6 +25,14 @@ const configSchema = z.object({
     });
   }
 
+  if (config.NODE_ENV === "production" && !config.DATABASE_PASSWORD_FILE) {
+    context.addIssue({
+      code: "custom",
+      path: ["DATABASE_PASSWORD_FILE"],
+      message: "DATABASE_PASSWORD_FILE is required in production.",
+    });
+  }
+
   if (Boolean(config.BOOTSTRAP_ADMIN_EMAIL_FILE) !== Boolean(config.BOOTSTRAP_ADMIN_PASSWORD_FILE)) {
     context.addIssue({
       code: "custom",
@@ -35,6 +44,7 @@ const configSchema = z.object({
 
 export interface AppConfig {
   databaseUrl: string;
+  databasePassword?: string;
   host: string;
   logLevel: z.infer<typeof configSchema>["LOG_LEVEL"];
   port: number;
@@ -45,6 +55,9 @@ export interface AppConfig {
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = configSchema.parse(environment);
+  const databasePassword = parsed.DATABASE_PASSWORD_FILE
+    ? readSecretFile(parsed.DATABASE_PASSWORD_FILE, "database password")
+    : undefined;
   const sessionSecret = parsed.SESSION_SECRET_FILE
     ? readSecretFile(parsed.SESSION_SECRET_FILE, "session secret")
     : randomBytes(32).toString("hex");
@@ -63,6 +76,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
 
   return {
     databaseUrl: parsed.DATABASE_URL,
+    ...(databasePassword ? { databasePassword } : {}),
     host: parsed.HOST,
     logLevel: parsed.LOG_LEVEL,
     port: parsed.PORT,

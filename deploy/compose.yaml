@@ -1,0 +1,109 @@
+services:
+  db:
+    image: homeorg-postgres:${IMAGE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: deploy/postgres.Dockerfile
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: homeorg
+      POSTGRES_USER: homeorg_owner
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_owner_password
+    secrets:
+      - db_owner_password
+      - db_app_password
+      - db_migrator_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U homeorg_owner -d homeorg"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: homeorg-api:${IMAGE_TAG:-local}
+    restart: "no"
+    command: ["node", "dist/src/database/migrate.js"]
+    environment:
+      DATABASE_URL: postgresql://homeorg_migrator@db:5432/homeorg
+      DATABASE_PASSWORD_FILE: /run/secrets/db_migrator_password
+      HOST: 0.0.0.0
+      NODE_ENV: production
+      SESSION_SECRET_FILE: /run/secrets/session_secret
+    secrets:
+      - db_migrator_password
+      - session_secret
+    depends_on:
+      db:
+        condition: service_healthy
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  api:
+    image: homeorg-api:${IMAGE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    environment:
+      DATABASE_URL: postgresql://homeorg_app@db:5432/homeorg
+      DATABASE_PASSWORD_FILE: /run/secrets/db_app_password
+      HOST: 0.0.0.0
+      PORT: 3000
+      NODE_ENV: production
+      LOG_LEVEL: info
+      SESSION_SECRET_FILE: /run/secrets/session_secret
+    secrets:
+      - db_app_password
+      - session_secret
+    ports:
+      - "127.0.0.1:${API_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "5"
+
+volumes:
+  postgres_data:
+    name: ${POSTGRES_VOLUME_NAME:-homeorg_postgres_data}
+
+secrets:
+  db_owner_password:
+    file: ${SECRETS_DIR:-./secrets}/db_owner_password
+  db_app_password:
+    file: ${SECRETS_DIR:-./secrets}/db_app_password
+  db_migrator_password:
+    file: ${SECRETS_DIR:-./secrets}/db_migrator_password
+  session_secret:
+    file: ${SECRETS_DIR:-./secrets}/session_secret

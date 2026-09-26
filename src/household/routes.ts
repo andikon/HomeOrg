@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { DatabaseConnection } from "../database/connection.js";
 import { boardPosts, entries, households, lists, members } from "../database/schema.js";
 import { problemBody, problemSchema } from "../problem.js";
-import { authenticateSession, type MemberView, toMemberView } from "../auth/sessions.js";
+import { authenticateSession, type MemberView } from "../auth/sessions.js";
 
 const uuidSchema = z.uuid();
 const listBodySchema = z.object({

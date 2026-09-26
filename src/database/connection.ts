@@ -11,9 +11,13 @@ export interface DatabaseConnection {
 export function createDatabaseConnection(
   databaseUrl: string,
   connectionTimeoutMillis = 5_000,
+  databasePassword?: string,
 ): DatabaseConnection {
+  const connectionString = databasePassword
+    ? withPassword(databaseUrl, databasePassword)
+    : databaseUrl;
   const pool = new Pool({
-    connectionString: databaseUrl,
+    connectionString,
     connectionTimeoutMillis,
     max: 10,
     statement_timeout: 5_000,
@@ -24,4 +28,10 @@ export function createDatabaseConnection(
     db: drizzle(pool, { schema }),
     close: () => pool.end(),
   };
+}
+
+function withPassword(databaseUrl: string, databasePassword: string): string {
+  const url = new URL(databaseUrl);
+  url.password = databasePassword;
+  return url.toString();
 }

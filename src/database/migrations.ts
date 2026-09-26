@@ -12,8 +12,9 @@ const migrationJournalSchema = z.object({
 export async function runMigrations(
   databaseUrl: string,
   migrationsFolder = join(process.cwd(), "drizzle"),
+  databasePassword?: string,
 ): Promise<void> {
-  const connection = createDatabaseConnection(databaseUrl);
+  const connection = createDatabaseConnection(databaseUrl, undefined, databasePassword);
 
   try {
     await migrate(connection.db, { migrationsFolder });

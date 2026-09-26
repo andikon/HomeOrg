@@ -23,3 +23,8 @@ available to Testcontainers for the integration tests.
 `npm test` runs HTTP integration tests against disposable PostgreSQL
 Testcontainers. `npm run typecheck` checks the TypeScript sources, and
 `npm run build` creates the production JavaScript output.
+
+`npm run verify` is the CI gate: formatting, lint, type-checking, tests,
+OpenAPI validation, production build, and a Docker Compose deployment smoke
+test. The Ubuntu host deployment, TLS proxy, secret setup, release, rollback,
+and recovery procedures are in [docs/deployment.md](docs/deployment.md).

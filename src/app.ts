@@ -56,6 +56,7 @@ const locationResponses = new Map<string, string[]>([
 export interface CreateAppOptions {
   bootstrapAdmin?: { email: string; password: string };
   databaseUrl: string;
+  databasePassword?: string;
   connectionTimeoutMillis?: number;
   migrationsFolder?: string;
   logLevel?: "fatal" | "error" | "warn" | "info" | "debug" | "trace" | "silent";
@@ -66,6 +67,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
   const database = createDatabaseConnection(
     options.databaseUrl,
     options.connectionTimeoutMillis,
+    options.databasePassword,
   );
   const app = Fastify({
     logController: new LogController({ disableRequestLogging: true }),

@@ -1,0 +1,12 @@
+.git
+.github
+.secrets
+coverage
+deploy/secrets
+dist
+docs
+node_modules
+test
+.env
+.env.*
+!.env.example

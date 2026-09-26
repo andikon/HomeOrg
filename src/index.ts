@@ -6,6 +6,7 @@ const config = loadConfig();
 const app = await createApp({
   bootstrapAdmin: config.bootstrapAdmin,
   databaseUrl: config.databaseUrl,
+  databasePassword: config.databasePassword,
   logLevel: config.logLevel,
   sessionSecret: config.sessionSecret,
 });

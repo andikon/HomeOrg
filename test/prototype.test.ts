@@ -2,6 +2,7 @@ import { once } from "node:events";
 import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { spawn } from "node:child_process";
+import SwaggerParser from "@apidevtools/swagger-parser";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
@@ -72,12 +73,13 @@ describe("API prototype", () => {
     expect(response.json()).toEqual({ status: "ready" });
   });
 
-  it("publishes an OpenAPI document generated from the health routes", async () => {
+  it("publishes a valid OpenAPI document generated from the health routes", async () => {
     const response = await app.inject({ method: "GET", url: "/openapi.json" });
     const document = response.json();
 
     expect(response.statusCode).toBe(200);
     expect(document.openapi).toMatch(/^3\./);
+    await expect(SwaggerParser.validate(document)).resolves.toBeDefined();
     expect(document.paths["/healthz"].get.responses["200"]).toBeDefined();
     expect(document.paths["/readyz"].get.responses["503"]).toBeDefined();
   });

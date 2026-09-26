@@ -1,0 +1,14 @@
+services:
+  api:
+    environment:
+      BOOTSTRAP_ADMIN_EMAIL_FILE: /run/secrets/bootstrap_admin_email
+      BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/bootstrap_admin_password
+    secrets:
+      - bootstrap_admin_email
+      - bootstrap_admin_password
+
+secrets:
+  bootstrap_admin_email:
+    file: ${SECRETS_DIR:-./secrets}/bootstrap_admin_email
+  bootstrap_admin_password:
+    file: ${SECRETS_DIR:-./secrets}/bootstrap_admin_password
