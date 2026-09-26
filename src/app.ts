@@ -43,6 +43,7 @@ const etagResponses = new Map<string, string[]>([
   ["PATCH /api/v1/lists/:listId/entries/:entryId", ["200"]],
   ["POST /api/v1/lists/:listId/entries/:entryId/move", ["200"]],
   ["POST /api/v1/board-posts", ["201"]],
+  ["GET /api/v1/board-posts", ["200"]],
   ["GET /api/v1/board-posts/:postId", ["200"]],
   ["PATCH /api/v1/board-posts/:postId", ["200"]],
 ]);

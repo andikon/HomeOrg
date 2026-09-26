@@ -417,6 +417,7 @@ describe("Household organization", () => {
       type: "apiKey",
       in: "header",
     });
+    expect(document.paths["/api/v1/board-posts"].get.responses["200"].headers.ETag.schema.type).toBe("string");
   });
 
   it("requires both current deletion ETags and cascades atomically", async () => {
@@ -573,15 +574,22 @@ describe("Household organization", () => {
       headers: { cookie: admin.cookie },
     });
     expect(firstPage.statusCode).toBe(200);
+    expect(firstPage.headers.etag).toMatch(/^"board-posts:[A-Za-z0-9_-]+"$/);
     expect(firstPage.json().items).toHaveLength(1);
     expect(firstPage.json().nextCursor).toEqual(expect.any(String));
     const newPost = await createBoardPost(app, member, "Created after first page");
+    const refreshedFirstPage = await app.inject({
+      method: "GET",
+      url: "/api/v1/board-posts?limit=1",
+      headers: { cookie: admin.cookie },
+    });
     const secondPage = await app.inject({
       method: "GET",
       url: `/api/v1/board-posts?limit=1&cursor=${encodeURIComponent(firstPage.json().nextCursor)}`,
       headers: { cookie: admin.cookie },
     });
     expect(secondPage.statusCode).toBe(200);
+    expect(refreshedFirstPage.headers.etag).not.toBe(firstPage.headers.etag);
     expect(secondPage.json().items[0].id).toBe(memberPostTwo.json().id);
     expect(secondPage.json().items[0].id).not.toBe(newPost.json().id);
 

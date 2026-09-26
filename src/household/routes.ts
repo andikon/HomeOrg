@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
@@ -687,7 +687,7 @@ export async function registerHouseholdRoutes(
         response: { 200: cursorPageSchema, 401: problemSchema, 422: problemSchema },
       },
     },
-    async (request) => {
+    async (request, reply) => {
       const household = await getHousehold(options.database);
       const predicates = [eq(boardPosts.householdId, household.id)];
       if (request.query.cursor) {
@@ -717,10 +717,12 @@ export async function registerHouseholdRoutes(
       const pageRows = hasMore ? rows.slice(0, request.query.limit) : rows;
       const last = pageRows.at(-1)?.post;
 
-      return {
+      const page = {
         items: pageRows.map(({ post, author }) => toBoardPostView(post, author)),
         nextCursor: hasMore && last ? encodeCursor(pageRows.at(-1)!.cursorCreatedAt, last.id) : null,
       };
+      reply.header("etag", boardPageEtag(page));
+      return page;
     },
   );
 
@@ -1206,20 +1208,34 @@ async function writeListPositions(
   transaction: Parameters<Parameters<DatabaseConnection["db"]["transaction"]>[0]>[0],
   ids: string[],
 ): Promise<void> {
-  for (const [position, id] of ids.entries()) {
+  await writePositions(ids, async (id, position) => {
     await transaction.update(lists).set({ position }).where(eq(lists.id, id));
-  }
+  });
 }
 
 async function writeEntryPositions(
   transaction: Parameters<Parameters<DatabaseConnection["db"]["transaction"]>[0]>[0],
   ids: string[],
 ): Promise<void> {
-  for (const [position, id] of ids.entries()) {
+  await writePositions(ids, async (id, position) => {
     await transaction.update(entries).set({ position }).where(eq(entries.id, id));
+  });
+}
+
+async function writePositions(
+  ids: string[],
+  updatePosition: (id: string, position: number) => Promise<void>,
+): Promise<void> {
+  for (const [position, id] of ids.entries()) {
+    await updatePosition(id, position);
   }
 }
 
 function encodeCursor(createdAt: string, id: string): string {
   return Buffer.from(JSON.stringify([createdAt, id])).toString("base64url");
+}
+
+function boardPageEtag(page: { items: unknown[]; nextCursor: string | null }): string {
+  const digest = createHash("sha256").update(JSON.stringify(page)).digest("base64url");
+  return `"board-posts:${digest}"`;
 }
