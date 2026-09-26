@@ -1,8 +1,8 @@
 # Household Organization API
 
-The API foundation uses Fastify, Drizzle ORM, and PostgreSQL. The current
-prototype exposes health/readiness checks and generated OpenAPI documentation;
-Household features are added in subsequent implementation tickets.
+The API uses Fastify, Drizzle ORM, and PostgreSQL to provide Member sessions,
+shared Lists and ordered Entries, and the member-attributed Household Board.
+Health/readiness checks and generated OpenAPI documentation are also available.
 
 ## Local development
 

@@ -15,6 +15,20 @@
       "when": 1790452394555,
       "tag": "0001_cuddly_gressill",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790454714932,
+      "tag": "0002_faithful_prowler",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790455037820,
+      "tag": "0003_nifty_angel",
+      "breakpoints": true
     }
   ]
 }

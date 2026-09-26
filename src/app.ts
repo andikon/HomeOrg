@@ -1,6 +1,7 @@
 import Fastify, {
   LogController,
   type FastifyInstance,
+  type FastifySchema,
 } from "fastify";
 import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
@@ -16,10 +17,40 @@ import { z } from "zod";
 import { createBootstrapAdministrator, registerAuthenticationRoutes } from "./auth/routes.js";
 import { createDatabaseConnection } from "./database/connection.js";
 import { migrationsAreCurrent } from "./database/migrations.js";
+import { registerHouseholdRoutes } from "./household/routes.js";
 import { errorCodeOf } from "./logging.js";
 import { problemBody } from "./problem.js";
 
 const healthResponse = z.object({ status: z.string() });
+const preconditionHeaders = new Map<string, string[]>([
+  ["PATCH /api/v1/lists/:listId", ["if-match"]],
+  ["DELETE /api/v1/lists/:listId", ["if-match", "if-entries-match"]],
+  ["POST /api/v1/lists/:listId/move", ["if-match"]],
+  ["PATCH /api/v1/lists/:listId/entries/:entryId", ["if-match"]],
+  ["DELETE /api/v1/lists/:listId/entries/:entryId", ["if-match"]],
+  ["POST /api/v1/lists/:listId/entries/:entryId/move", ["if-match"]],
+  ["PATCH /api/v1/board-posts/:postId", ["if-match"]],
+  ["DELETE /api/v1/board-posts/:postId", ["if-match"]],
+]);
+const etagResponses = new Map<string, string[]>([
+  ["GET /api/v1/lists", ["200"]],
+  ["POST /api/v1/lists", ["201"]],
+  ["GET /api/v1/lists/:listId", ["200"]],
+  ["PATCH /api/v1/lists/:listId", ["200"]],
+  ["GET /api/v1/lists/:listId/entries", ["200"]],
+  ["POST /api/v1/lists/:listId/entries", ["201"]],
+  ["GET /api/v1/lists/:listId/entries/:entryId", ["200"]],
+  ["PATCH /api/v1/lists/:listId/entries/:entryId", ["200"]],
+  ["POST /api/v1/lists/:listId/entries/:entryId/move", ["200"]],
+  ["POST /api/v1/board-posts", ["201"]],
+  ["GET /api/v1/board-posts/:postId", ["200"]],
+  ["PATCH /api/v1/board-posts/:postId", ["200"]],
+]);
+const locationResponses = new Map<string, string[]>([
+  ["POST /api/v1/lists", ["201"]],
+  ["POST /api/v1/lists/:listId/entries", ["201"]],
+  ["POST /api/v1/board-posts", ["201"]],
+]);
 
 export interface CreateAppOptions {
   bootstrapAdmin?: { email: string; password: string };
@@ -189,10 +220,11 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         version: "0.1.0",
       },
     },
-    transform: jsonSchemaTransform,
+    transform: householdOpenApiTransform,
   });
   await app.register(swaggerUi, { routePrefix: "/docs" });
   await registerAuthenticationRoutes(app, { database, sessionSecret });
+  await registerHouseholdRoutes(app, { database, sessionSecret });
 
   if (options.bootstrapAdmin) {
     await createBootstrapAdministrator(database, options.bootstrapAdmin);
@@ -260,4 +292,62 @@ function requestPath(request: {
   url: string;
 }): string {
   return request.routeOptions.url ?? request.url.split("?", 1)[0] ?? "/";
+}
+
+const householdOpenApiTransform: typeof jsonSchemaTransform = (document) => {
+  const transformed = jsonSchemaTransform(document);
+  if (!transformed.schema) return transformed;
+
+  const schema: FastifySchema = { ...transformed.schema };
+  const method = Array.isArray(document.route.method)
+    ? document.route.method[0]
+    : document.route.method;
+  const operation = `${method?.toUpperCase()} ${document.url}`;
+  const requiredHeaders = preconditionHeaders.get(operation);
+  if (requiredHeaders) {
+    schema.headers = {
+      type: "object",
+      properties: Object.fromEntries(requiredHeaders.map((name) => [
+        name,
+        { type: "string", description: `Required concurrency precondition: ${name}.` },
+      ])),
+      required: requiredHeaders,
+      additionalProperties: true,
+    };
+  }
+
+  const documentedResponses = etagResponses.get(operation);
+  const documentedLocations = locationResponses.get(operation);
+  if (documentedResponses || documentedLocations) {
+    const responses = asRecord(schema.response);
+    if (responses) {
+      for (const status of new Set([...(documentedResponses ?? []), ...(documentedLocations ?? [])])) {
+        const response = asRecord(responses[status]);
+        if (!response) continue;
+        const headers = asRecord(response.headers) ?? {};
+        if (documentedResponses?.includes(status)) {
+          headers.ETag = {
+            type: "string",
+            description: "Strong validator for the returned resource or collection representation.",
+          };
+        }
+        if (documentedLocations?.includes(status)) {
+          headers.Location = {
+            type: "string",
+            description: "URI of the created resource.",
+          };
+        }
+        responses[status] = { ...response, headers };
+      }
+      schema.response = responses;
+    }
+  }
+
+  return { ...transformed, schema };
+};
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
 }

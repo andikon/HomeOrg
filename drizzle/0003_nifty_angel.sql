@@ -1,0 +1,2 @@
+ALTER TABLE "entries" DROP CONSTRAINT "entries_quantity_positive_decimal";--> statement-breakpoint
+ALTER TABLE "entries" ADD CONSTRAINT "entries_quantity_positive_decimal" CHECK ("entries"."quantity" IS NULL OR ("entries"."quantity" ~ '^[0-9]+(\.[0-9]{1,3})?$' AND "entries"."quantity"::numeric > 0));
