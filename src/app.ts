@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { LogController, type FastifyInstance } from "fastify";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import {
@@ -9,6 +9,7 @@ import {
 import { z } from "zod";
 import { createDatabaseConnection } from "./database/connection.js";
 import { migrationsAreCurrent } from "./database/migrations.js";
+import { errorCodeOf } from "./logging.js";
 
 const healthResponse = z.object({ status: z.string() });
 
@@ -25,6 +26,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     options.connectionTimeoutMillis,
   );
   const app = Fastify({
+    logController: new LogController({ disableRequestLogging: true }),
     logger: {
       level: options.logLevel ?? "info",
       redact: {
@@ -38,6 +40,28 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     },
   });
 
+  app.addHook("onRequest", async (request) => {
+    request.log.info(
+      {
+        event: "request_received",
+        method: request.method,
+        path: requestPath(request),
+      },
+      "Incoming request",
+    );
+  });
+  app.addHook("onResponse", async (request, reply) => {
+    request.log.info(
+      {
+        event: "request_completed",
+        method: request.method,
+        path: requestPath(request),
+        statusCode: reply.statusCode,
+        responseTime: reply.elapsedTime,
+      },
+      "Request completed",
+    );
+  });
   app.addHook("onClose", async () => {
     await database.close();
   });
@@ -93,12 +117,8 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
 
         return { status: "ready" };
       } catch (error) {
-        const errorCode =
-          error instanceof Error && "code" in error && typeof error.code === "string"
-            ? error.code
-            : "unknown";
         request.log.warn(
-          { event: "readiness_check_failed", errorCode },
+          { event: "readiness_check_failed", errorCode: errorCodeOf(error) },
           "Readiness check failed",
         );
         return reply.code(503).send({ status: "not_ready" });
@@ -113,4 +133,11 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
   );
 
   return app;
+}
+
+function requestPath(request: {
+  routeOptions: { url?: string };
+  url: string;
+}): string {
+  return request.routeOptions.url ?? request.url.split("?", 1)[0] ?? "/";
 }

@@ -1,5 +1,6 @@
 import { loadConfig } from "./config.js";
 import { createApp } from "./app.js";
+import { errorCodeOf } from "./logging.js";
 
 const config = loadConfig();
 const app = await createApp({
@@ -10,11 +11,10 @@ const app = await createApp({
 try {
   await app.listen({ host: config.host, port: config.port });
 } catch (error) {
-  const errorCode =
-    error instanceof Error && "code" in error && typeof error.code === "string"
-      ? error.code
-      : "unknown";
-  app.log.error({ event: "api_start_failed", errorCode }, "API failed to start");
+  app.log.error(
+    { event: "api_start_failed", errorCode: errorCodeOf(error) },
+    "API failed to start",
+  );
   await app.close();
   process.exitCode = 1;
 }

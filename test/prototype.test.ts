@@ -1,3 +1,7 @@
+import { once } from "node:events";
+import { createServer } from "node:net";
+import { setTimeout as delay } from "node:timers/promises";
+import { spawn } from "node:child_process";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
@@ -85,6 +89,50 @@ describe("API prototype", () => {
     expect(response.headers["content-type"]).toContain("text/html");
   });
 
+  it("starts an HTTP server and omits query-string secrets from logs", async () => {
+    const port = await findAvailablePort();
+    const secret = "query-token-must-not-be-logged";
+    const child = spawn(process.execPath, ["--import", "tsx", "src/index.ts"], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        DATABASE_URL: container.getConnectionUri(),
+        HOST: "127.0.0.1",
+        LOG_LEVEL: "info",
+        NODE_ENV: "test",
+        PORT: String(port),
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+      output += chunk;
+    });
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+      output += chunk;
+    });
+
+    try {
+      await waitForReady(child, `http://127.0.0.1:${port}/readyz`);
+      const response = await fetch(
+        `http://127.0.0.1:${port}/healthz?token=${secret}`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ status: "ok" });
+    } finally {
+      if (child.exitCode === null) {
+        const closed = once(child, "close");
+        child.kill();
+        await closed;
+      }
+    }
+
+    expect(output).toContain('"event":"request_received"');
+    expect(output).toContain('"path":"/healthz"');
+    expect(output).not.toContain(secret);
+  });
+
   it("reports not ready when PostgreSQL cannot be reached", async () => {
     const unavailableApp = await createApp({
       databaseUrl: "postgres://homeorg:homeorg@127.0.0.1:1/homeorg",
@@ -105,3 +153,40 @@ describe("API prototype", () => {
     }
   });
 });
+
+async function findAvailablePort(): Promise<number> {
+  const server = createServer();
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+
+  if (!address || typeof address === "string") {
+    server.close();
+    throw new Error("Could not allocate a local TCP port for the API startup test.");
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+
+  return address.port;
+}
+
+async function waitForReady(child: ReturnType<typeof spawn>, url: string): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (child.exitCode !== null) {
+      throw new Error(`API process exited before becoming ready with code ${child.exitCode}.`);
+    }
+
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(500) });
+      if (response.ok) {
+        return;
+      }
+    } catch {
+      await delay(100);
+    }
+  }
+
+  throw new Error("API process did not become ready within five seconds.");
+}
